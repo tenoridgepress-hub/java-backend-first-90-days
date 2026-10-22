@@ -1,0 +1,7 @@
+# Third-party notices and attribution review
+
+The Maven Wrapper 3.3.4 scripts retain their existing Apache License 2.0 headers and match the official only-script distribution byte for byte. Preserve the headers, supplied full text in licenses/Apache-2.0.txt and upstream attribution in licenses/maven-wrapper-NOTICE.txt. The wrapper fetches Maven 3.9.12. Maven and dependencies are downloaded by the recipient and are not bundled in this source archive.
+
+The project declares Spring Boot 4.1.1 and uses the Spring framework/security stack, Flyway, H2, PostgreSQL JDBC and JUnit through its Maven dependencies. Their names are attribution, not an endorsement. The pom.xml and wrapper properties are the authoritative version inputs; do not infer all transitive versions from this paragraph.
+
+This source-only candidate excludes third-party binaries, Java runtimes, Maven distributions and packaged application JARs. Production-07 resolved 111 unique application dependencies with complete POM license metadata, exact POM/JAR hashes and 170 embedded license/notice entries retained in the complete edition's evidence/production07/. That metadata is not original-code ownership clearance. Build-plugin dependencies and JDK/Maven distributions are outside the graph. A future binary release requires selected dual-license routes, applicable full license/notice texts and source-obligation review. The original companion files are covered by LICENSE. That MIT grant does not replace the wrapper’s Apache terms or the licenses of downloaded dependencies.
