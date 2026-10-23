@@ -16,11 +16,21 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import java.nio.charset.StandardCharsets;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.core.JsonToken;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.StreamReadFeature;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class ShippingClient {
+    private static final JsonFactory QUOTE_JSON = JsonFactory.builder()
+        .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4)
+            .maxStringLength(256).maxNumberLength(20).build())
+        .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
     private final HttpClient client;
     private final String baseUrl;
     private final Duration timeout;
@@ -67,6 +77,13 @@ public class ShippingClient {
             if (result.statusCode() != 200) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Shipping unavailable");
             }
+            try {
+                validateQuote(result);
+            } catch (RuntimeException invalidQuote) {
+                outcome = "invalid_response";
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid shipping quote");
+            }
+            if (System.nanoTime() - started >= timeout.toNanos()) throw new TimeoutException();
             outcome = "success";
             return result.body();
         } catch (InterruptedException interrupted) {
@@ -82,6 +99,9 @@ public class ShippingClient {
                 outcome = "timeout";
                 throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "Shipping timed out");
             }
+            if (transportFailure.getCause() instanceof java.nio.charset.CharacterCodingException) {
+                outcome = "invalid_response";
+            }
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Shipping unavailable");
         } finally {
             if (pending != null && !pending.isDone()) pending.cancel(true);
@@ -89,6 +109,44 @@ public class ShippingClient {
             metrics.counter("ridge.shipping.calls", "outcome", outcome).increment();
             metrics.timer("ridge.shipping.duration", "outcome", outcome)
                 .record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    private static void validateQuote(HttpResponse<String> response) {
+        var encodings = response.headers().allValues("Content-Encoding");
+        if (!encodings.isEmpty() && (encodings.size() != 1 || !encodings.getFirst().equalsIgnoreCase("identity"))) {
+            throw new IllegalArgumentException("Unsupported content encoding");
+        }
+        var types = response.headers().allValues("Content-Type");
+        if (!types.isEmpty()) {
+            if (types.size() != 1) throw new IllegalArgumentException("Ambiguous content type");
+            var type = MediaType.parseMediaType(types.getFirst());
+            if (!type.getType().equalsIgnoreCase("application") || !type.getSubtype().equalsIgnoreCase("json")
+                || (type.getCharset() != null && !StandardCharsets.UTF_8.equals(type.getCharset()))) {
+                throw new IllegalArgumentException("Unsupported content type");
+            }
+        }
+        boolean hasCents = false;
+        try (var parser = QUOTE_JSON.createParser(response.body())) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) throw new IllegalArgumentException("Expected quote object");
+            while (parser.nextToken() != JsonToken.END_OBJECT) {
+                if (parser.currentToken() != JsonToken.PROPERTY_NAME) throw new IllegalArgumentException("Expected field");
+                String field = parser.currentName();
+                var token = parser.nextToken();
+                if (field.equals("cents")) {
+                    if (token != JsonToken.VALUE_NUMBER_INT || parser.getLongValue() < 0) {
+                        throw new IllegalArgumentException("Expected nonnegative integer cents");
+                    }
+                    hasCents = true;
+                } else if (field.equals("currency")) {
+                    if (token != JsonToken.VALUE_STRING || !parser.getString().matches("[A-Z]{3}")) {
+                        throw new IllegalArgumentException("Expected currency code");
+                    }
+                } else {
+                    throw new IllegalArgumentException("Unknown quote field");
+                }
+            }
+            if (!hasCents || parser.nextToken() != null) throw new IllegalArgumentException("Incomplete or trailing quote");
         }
     }
 

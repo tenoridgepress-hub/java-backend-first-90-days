@@ -34,7 +34,7 @@ else:
     if not 1 <= args.port <= 65535:
         parser.error("port must be in 1..65535")
     java = str(Path(environment["JAVA_HOME"]) / "bin/java") if "JAVA_HOME" in environment else "java"
-    command = [java, "-jar", str(root / "target/ridge-orders-0.6.0.jar"),
+    command = [java, "-jar", str(root / "target/ridge-orders-0.6.1-rc.1.jar"),
                *("--" + key + "=" + value for key, value in properties.items()), "--server.port=" + str(args.port),
                "--ridge.shipping.url=" + args.shipping_url, "--ridge.shipping.timeout-ms=" + str(args.shipping_timeout_ms)]
 print("Reader lab: fresh H2 only; state is lost on exit; inherited Spring/Java option overrides removed.", flush=True)

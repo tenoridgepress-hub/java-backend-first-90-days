@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -59,6 +61,13 @@ final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<String>
 
     @Override
     public void onComplete() {
-        body.complete(bytes.toString(StandardCharsets.UTF_8));
+        try {
+            body.complete(StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes.toByteArray())).toString());
+        } catch (CharacterCodingException invalidEncoding) {
+            body.completeExceptionally(invalidEncoding);
+        }
     }
 }

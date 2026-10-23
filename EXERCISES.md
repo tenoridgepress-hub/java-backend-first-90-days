@@ -1,6 +1,6 @@
 # Executable exercise index
 
-Run from this directory against disposable state. Full explanation and solutions are in the edition-level manuscript.
+Run from this directory against disposable state. The required route uses the supplied tests and the book's self-contained prompts/rubric. No private packet or historical artifact is required. Optional mutation experiments below require their separately supplied patch and may be skipped when absent. Keep attempts before consulting solutions.
 
 | Task | Run or starting artifact | Acceptance |
 |---|---|---|
@@ -16,7 +16,7 @@ Run from this directory against disposable state. Full explanation and solutions
 | schema expansion | `python3 tools/reader_lab.py verify --tests MigrationTest` | historical tenant backfill; old writer rejected after V6; tenant-aware insert succeeds |
 | plans | `labs/query-plans.sql` on disposable PostgreSQL | compare scanned rows, not just local timings |
 | row locks | `labs/LockTimeoutLab.java` with PostgreSQL JDBC driver | 55P03, then 25P02, then recovery |
-| finite workload | `tools/load_reads.py` with RIDGE_READ_TOKEN | all authenticated reads succeed; limits stated |
+| finite workload | `tools/load_reads_safe.py` with RIDGE_READ_TOKEN | all authenticated reads succeed; redirects rejected; limits stated |
 
 To challenge the timeout repair, make a separate source copy, apply the edition's `evidence/timeout-mutation.patch` with `patch -p1`, and run the body-delay test. That mutation is expected to fail on Java 21. Do not apply it to your only working solution. It removes the bounded future wait and late-result rejection, recreating reliance on the request timeout alone. Restore the solution copy for ordinary labs.
 

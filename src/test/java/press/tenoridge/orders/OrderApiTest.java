@@ -105,6 +105,22 @@ class OrderApiTest {
         }
     }
 
+    @Test void fractionalQuantityIsRejectedWithoutChangingDurableState() throws Exception {
+        var reservations = database.queryForList("SELECT * FROM reservation ORDER BY id");
+        var outbox = database.queryForList("SELECT * FROM reservation_outbox ORDER BY tenant_id,event_id");
+        for (String quantity : List.of("2.9", "2.0", "2e0")) {
+            var response = call("POST", "/api/orders/1001/reservations", valid("orders.write"),
+                "{\"eventId\":\"strict-integer\",\"quantity\":" + quantity + "}");
+            assertEquals(400, response.statusCode(), quantity);
+            var json = new tools.jackson.databind.ObjectMapper().readTree(response.body());
+            assertEquals("invalid_request", json.get("code").asText());
+            assertEquals("exercise-1001", json.get("requestId").asText());
+            assertEquals(reservations, database.queryForList("SELECT * FROM reservation ORDER BY id"));
+            assertEquals(outbox, database.queryForList("SELECT * FROM reservation_outbox ORDER BY tenant_id,event_id"));
+        }
+        assertEquals(200, reserve("strict-integer", 2).statusCode());
+    }
+
     @Test void healthIsPublic() throws Exception {
         assertEquals(200, call("GET", "/actuator/health", null, null).statusCode());
     }

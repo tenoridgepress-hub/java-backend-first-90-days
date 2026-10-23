@@ -11,10 +11,76 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.server.ResponseStatusException;
 
 @Timeout(10)
 class ShippingClientTest {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "not-json", "{", "null", "[]", "499", "{}", "{\"cents\":null}",
+        "{\"cents\":true}", "{\"cents\":\"499\"}", "{\"cents\":1.5}", "{\"cents\":1e2}",
+        "{\"cents\":-1}", "{\"cents\":9223372036854775808}", "{\"cents\":999999999999999999999}",
+        "{\"cents\":1,\"cents\":2}", "{\"cents\":1}{}", "{\"cents\":1}garbage",
+        "{\"cents\":1,}", "{\"cents\":1,\"extra\":0}", "{\"cents\":{\"value\":1}}",
+        "{\"cents\":1,\"currency\":null}", "{\"cents\":1,\"currency\":123}",
+        "{\"cents\":1,\"currency\":\"usd\"}", "{\"cents\":1,\"currency\":\"US\"}",
+        "{\"cents\":1,\"currency\":\"USD\",\"currency\":\"EUR\"}",
+        "{\"cents\":1,\"currency\":\"\\uD800\"}", "{\"cents\":01}", "/*quote*/{\"cents\":1}"})
+    void invalidQuoteReturns502WithoutSuccessAndRecovers(String body) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.body = body.getBytes(StandardCharsets.UTF_8);
+            assertEquals(502, assertThrows(ResponseStatusException.class, () -> fixture.client.quote(1001)).getStatusCode().value());
+            assertNull(fixture.metrics.find("ridge.shipping.calls").tag("outcome", "success").counter());
+            assertEquals(1, fixture.metrics.get("ridge.shipping.calls").tag("outcome", "invalid_response").counter().count());
+            assertEquals(1, fixture.metrics.get("ridge.shipping.duration").tag("outcome", "invalid_response").timer().count());
+            fixture.body = "{\"cents\":499}".getBytes(StandardCharsets.UTF_8);
+            assertEquals("{\"cents\":499}", fixture.client.quote(1001));
+            assertEquals(1, fixture.metrics.get("ridge.shipping.calls").tag("outcome", "success").counter().count());
+            assertEquals(1, fixture.metrics.get("ridge.shipping.available.permits").gauge().value());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"cents\":0}", "{\"cents\":9223372036854775807}",
+        "{\"cents\":499,\"currency\":\"USD\"}", " {\"currency\":\"EUR\",\"cents\":1} \n"})
+    void validQuotePreservesBody(String body) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.body = body.getBytes(StandardCharsets.UTF_8);
+            fixture.contentType = "application/json; charset=UTF-8";
+            assertEquals(body, fixture.client.quote(1001));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"text/html", "application/json; charset=ISO-8859-1", "application/json; charset=invalid"})
+    void incompatibleContentTypeReturns502(String contentType) throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.contentType = contentType;
+            assertEquals(502, assertThrows(ResponseStatusException.class, () -> fixture.client.quote(1001)).getStatusCode().value());
+        }
+    }
+
+    @Test void invalidUtf8Returns502WithoutSuccess() throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.body = new byte[]{(byte) 0xc3, 0x28};
+            assertEquals(502, assertThrows(ResponseStatusException.class, () -> fixture.client.quote(1001)).getStatusCode().value());
+            assertEquals(1, fixture.metrics.get("ridge.shipping.calls").tag("outcome", "invalid_response").counter().count());
+            assertNull(fixture.metrics.find("ridge.shipping.calls").tag("outcome", "success").counter());
+        }
+    }
+
+    @Test void compressedContentReturns502() throws Exception {
+        try (var fixture = new Fixture()) {
+            fixture.contentEncoding = "gzip";
+            assertEquals(502, assertThrows(ResponseStatusException.class, () -> fixture.client.quote(1001)).getStatusCode().value());
+        }
+    }
+
+    @Test void boundedStringsAndNestedStructuresReturn502() throws Exception {
+        invalidQuoteReturns502WithoutSuccessAndRecovers("{\"cents\":1,\"currency\":\"" + "A".repeat(300) + "\"}");
+        invalidQuoteReturns502WithoutSuccessAndRecovers("{\"cents\":" + "[".repeat(100) + "0" + "]".repeat(100) + "}");
+    }
     @Test void downstreamRejectionReturns502() throws Exception {
         try (var fixture = new Fixture()) {
             fixture.status = 503;
@@ -136,6 +202,9 @@ class ShippingClientTest {
             new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         volatile String mode = "healthy";
         volatile int status = 200;
+        volatile byte[] body = "{\"cents\":499}".getBytes(StandardCharsets.UTF_8);
+        volatile String contentType = "application/json";
+        volatile String contentEncoding = "identity";
 
         Fixture() throws Exception {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -143,13 +212,16 @@ class ShippingClientTest {
             server.createContext("/quote/1001", exchange -> {
                 String current = mode;
                 byte[] body = current.equals("oversize") ? new byte[32_768]
-                    : "{\"cents\":499}".getBytes(StandardCharsets.UTF_8);
+                    : this.body;
                 try {
                     if (current.equals("headers")) {
                         reached.countDown();
                         release.await(1200, TimeUnit.MILLISECONDS);
                     }
-                    exchange.sendResponseHeaders(status, body.length);
+                    exchange.getResponseHeaders().set("Content-Type", contentType);
+                    exchange.getResponseHeaders().set("Content-Encoding", contentEncoding);
+                    exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
+                    if (body.length == 0) return;
                     exchange.getResponseBody().write(body, 0, 1);
                     exchange.getResponseBody().flush();
                     if (current.equals("body") || current.equals("stall")) {

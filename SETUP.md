@@ -23,6 +23,6 @@ Those are templates, not an assertion that a local server/user exists. The editi
 
 The compose file optionally describes PostgreSQL 17 on host port 5439. It was not rerun here. Do not mix its database/password with the example above without adapting the values.
 
-Windows translation (not executed in this edition): the Python reader launcher selects mvnw.cmd. Use `curl.exe` where curl is an alias. Direct application launch uses `java -jar target\ridge-orders-0.6.0.jar`. Socket permission errors indicate an execution-environment restriction and must be resolved before interpreting HTTP tests.
+Windows translation (not executed in this edition): the Python reader launcher selects mvnw.cmd. Use `curl.exe` where curl is an alias. Direct application launch uses `java -jar target\ridge-orders-0.6.1-rc.1.jar`. Socket permission errors indicate an execution-environment restriction and must be resolved before interpreting HTTP tests.
 
 For local metrics, mint `python3 tools/reader_lab.py token --scope ops` and request `/actuator/metrics`. No Prometheus scrape registry is installed. The known signing key is for these loopback labs only.

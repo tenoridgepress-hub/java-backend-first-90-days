@@ -1,6 +1,6 @@
 # Independent attempts before worked answers
 
-These exercises are author-designed. No uncoached reader completion is claimed. Keep your attempt before opening Chapter 23's transfer solutions. Use the four-dimension rubric in Chapter 22 and reader-trial-kit/ACCEPTANCE-RUBRIC.md. Suggested time boxes are planning aids, not measured reader timings.
+These exercises are author-designed. No human reader completion is claimed. Keep your attempt before opening Chapter 23's transfer solutions. Use the complete in-book rubric with the source-only milestones. Private reader-trial packets and facilitator files mentioned in historical scenarios below are optional artifacts, not prerequisites. Suggested time boxes are planning aids, not measured reader timings.
 
 ## T1 — Diagnose an unfamiliar evidence packet (25 minutes)
 
